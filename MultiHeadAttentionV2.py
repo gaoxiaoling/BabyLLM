@@ -64,7 +64,18 @@ class MultiHeadAttentionV2(nn.Module):
         keys = keys.view(batch_size, seq_length, self.num_heads, self.d_head).permute(0,2,1,3)  # (batch_size, num_heads, seq_length, d_head)
         queries = queries.view(batch_size, seq_length, self.num_heads, self.d_head).permute(0,2,1,3)  # (batch_size, num_heads, seq_length, d_head)
         values = values.view(batch_size, seq_length, self.num_heads, self.d_head).permute(0,2,1,3)  # (batch_size, num_heads, seq_length, d_head)
-        
+
+        #如果更加激进一点的话，其实可以用一个更大的矩阵，一个 W 包含所有 heads 的 Wq, Wk, Wv，
+
+
+
+        # 然后在分别得到Q,K,V，在进行计算，最后再拼起来，
+        # 这样的计算过程，有多少个head就要进行多少次的矩阵乘法计算
+        # 实际上也可以先将各个 Wq， Wk, Wv 拼起来，变成一个大的矩阵，然后进行一次计算，得到所有头的 Q,K,V，
+        # 其中Q，K 在分别计算得到 Attention，然后再拼接起来
+        # 这样的话，原本的Wq, Wk, Wv 的维度是 (d_model, d_head)，现在变成 (d_model, d_head * num_heads)
+        # 从数学上来讲是一样的，只是把这样一个过程描述成多头，更加让人能够理解而已，实际就是拼起来一起算的，不是优化，而是本来就这么做的
+
         #打印 日志 keys 的 shape
         print(f"keys shape: {keys.shape}")
         print(f"queries shape: {queries.shape}")
