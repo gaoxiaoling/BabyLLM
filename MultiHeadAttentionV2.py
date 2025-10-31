@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 
 import os
-from CausalAttention import CausalAttention     
 
 class MultiHeadAttentionV2(nn.Module):
     # d_model 是输入的维度， num_heads 是头的数量， d_head 是每个头的维度
@@ -146,9 +145,12 @@ if __name__ == "__main__":
     d_model = 8
     num_heads = 2
 
-    mha = MultiHeadAttentionV2(d_model, num_heads)
+    #在mps上运行
+    device = torch.device("mps")
 
-    x = torch.randn(batch_size, seq_length, d_model)
+    mha = MultiHeadAttentionV2(d_model, num_heads).to(device)
+
+    x = torch.randn(batch_size, seq_length, d_model).to(device)
 
     output = mha(x)
 
