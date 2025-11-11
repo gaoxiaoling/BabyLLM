@@ -27,16 +27,32 @@ class MultiHeadAttentionV2(nn.Module):
         # 其中Q，K 在分别计算得到 Attention，然后再拼接起来
         # 这样的话，原本的Wq, Wk, Wv 的维度是 (d_model, d_head)，现在变成 (d_model, d_head * num_heads)
         # 从数学上来讲是一样的，只是把这样一个过程描述成多头，更加让人能够理解而已，实际就是拼起来一起算的，不是优化，而是本来就这样
-        self.Wq = nn.Parameter(torch.randn(d_model, d_model))#d_model = heads × d_head
-        self.Wk = nn.Parameter(torch.randn(d_model, d_model))
-        self.Wv = nn.Parameter(torch.randn(d_model, d_model))
+        # self.Wq = nn.Parameter(torch.randn(d_model, d_model))#d_model = heads × d_head
+        # self.Wk = nn.Parameter(torch.randn(d_model, d_model))
+        # self.Wv = nn.Parameter(torch.randn(d_model, d_model))
 
+        # use nn.Linear
+        self.Wq = nn.Linear(d_model, d_model, bias=False)
+        self.Wk = nn.Linear(d_model, d_model, bias=False)
+        self.Wv = nn.Linear(d_model, d_model, bias=False)
+        
         #add dropout layer
         self.dropout = nn.Dropout(p=dropout)
 
         #mask buffer
         MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", 2048))  # 假设的最大上下文长度
-        self.register_buffer("mask", torch.tril(torch.ones(MAX_CONTEXT_LENGTH, MAX_CONTEXT_LENGTH), diagonal=1))  #固定参数的缓存
+        #self.register_buffer("mask", torch.tril(torch.ones(MAX_CONTEXT_LENGTH, MAX_CONTEXT_LENGTH), diagonal=1))  #固定参数的缓存
+        self.register_buffer("mask", torch.tril(torch.ones(MAX_CONTEXT_LENGTH, MAX_CONTEXT_LENGTH))) 
+        # 因为在计算 Attention 时，是对所有的 token 进行计算的，超出部分的 token 只是 padding 而已，
+        # 不会对计算结果产生影响，也不会对计算时间产生影响，因此可以直接忽略掉
+        # 为什么padding不会影响计算性能？
+        # 因为在计算 Attention 时，是对所有的 token 进行计算的，超出部分的 token 只是 padding 而已，
+        # 不会对计算结果产生影响，也不会对计算时间产生影响，因此可以直接忽略掉
+        # 为什么padding不会影响计算性能？
+
+
+
+        #        self.register_buffer("mask", torch.triu(torch.ones(context_length, context_length), diagonal=1))
 
 
 
@@ -44,10 +60,22 @@ class MultiHeadAttentionV2(nn.Module):
         #取得基本参数
         batch_size, seq_length, _ = input.size()
 
+        # 这里的 seq_length 是补全之后的长度，或者是固定的一个长度，比如 2048，
+        # 超出部分的计算是不是就是多余的？
+        # 实际上是没有的，因为在计算Attention 时，是对所有的 token 进行计算的，超出部分的 token 只是 padding 而已，
+        # 不会对计算结果产生影响，也不会对计算时间产生影响，因此可以直接忽略掉
+        # 为什么padding不会影响计算性能？
+    
+
         #一并计算 qkv
-        keys = torch.matmul(input, self.Wk)  # (batch_size, seq_length, d_head * num_heads)
-        queries = torch.matmul(input, self.Wq)  # (batch_size, seq_length, d_head * num_heads)
-        values = torch.matmul(input, self.Wv)  # (batch_size, seq_length, d_head * num_heads)
+        # keys = torch.matmul(input, self.Wk)  # (batch_size, seq_length, d_head * num_heads)
+        # queries = torch.matmul(input, self.Wq)  # (batch_size, seq_length, d_head * num_heads)
+        # values = torch.matmul(input, self.Wv)  # (batch_size, seq_length, d_head * num_heads)
+        keys = self.Wk(input)  # (batch_size, seq_length, d_head * num_heads)
+        queries = self.Wq(input)  # (batch_size, seq_length, d_head * num_heads)
+        values = self.Wv(input)  # (batch_size, seq_length, d_head * num_heads)
+
+
 
         #将 qkv 分成多个头
         #input 的维度是 (batch_size, seq_length, d_model)，qkv 只是改变了d_model 维度,变成 d_head * num_heads
@@ -76,9 +104,9 @@ class MultiHeadAttentionV2(nn.Module):
         # 从数学上来讲是一样的，只是把这样一个过程描述成多头，更加让人能够理解而已，实际就是拼起来一起算的，不是优化，而是本来就这么做的
 
         #打印 日志 keys 的 shape
-        print(f"keys shape: {keys.shape}")
-        print(f"queries shape: {queries.shape}")
-        print(f"values shape: {values.shape}")
+        # print(f"keys shape: {keys.shape}")
+        # print(f"queries shape: {queries.shape}")
+        # print(f"values shape: {values.shape}")
         
         # reshape() - 自动处理内存连续性，view 需要连续内存，多数情况下两者差距不大
         # transpose() - 只能交换两个维度， permute可以处理多维度，
@@ -87,7 +115,7 @@ class MultiHeadAttentionV2(nn.Module):
         # 因为 QK^T 是 seq_length 跟 seq_length 的矩阵，要和 V 做点积，所以要转置
         scores = torch.matmul(queries, keys.transpose(-2, -1))  # (batch_size, num_heads, seq_length, d_head )
         # 打印日志 scores 的 shape
-        print(f"scores shape: {scores.shape}")
+        # print(f"scores shape: {scores.shape}")
 
          
         #mask处理,从缓存获取合适大小的 mask，并对 sores 进行处理
@@ -98,15 +126,15 @@ class MultiHeadAttentionV2(nn.Module):
         #这里如果不进行unsqueeze，实际效果也是一样的，（seq_length, seq_length)会被当做(1, 1, seq_length, seq_length)
 
         # 打印mask的具体数据
-        print(f"mask shape: {mask.shape}")
-        print(f"mask data: {mask}")
+        # print(f"mask shape: {mask.shape}")
+        # print(f"mask data: {mask}")
 
         # 将 mask 应用到 scores 中，将 padding 位置的 scores 设为负无穷大
         # 这时候计算出的结果就是 batch size， heads， seq_length， seq_length，多个合在一起的 Attention 矩阵
-        scores = scores.masked_fill(mask == 0, float('-inf'))  # (batch_size, num_heads, seq_length, seq_length)
+        scores = scores.masked_fill(mask == 0, float('-inf'))  # (batch_size, num_heads, seq_length, seq_length) 
         # 打印日志 scores 的 shape及数据
-        print(f"scores shape after mask: {scores.shape}")
-        print(f"scores data after mask: {scores}")
+        # print(f"scores shape after mask: {scores.shape}")
+        # print(f"scores data after mask: {scores}")
 
 
         # 对 scores 进行 softmax 归一化，得到注意力权重
@@ -114,8 +142,8 @@ class MultiHeadAttentionV2(nn.Module):
         attention_weights = torch.softmax(scores/self.d_head**0.5, dim=-1)  # (batch_size, num_heads, seq_length, seq_length)
 
         # 打印日志 attention_weights 的 shape
-        print(f"attention_weights shape: {attention_weights.shape}")
-        print(f"attention_weights data: {attention_weights}")
+        # print(f"attention_weights shape: {attention_weights.shape}")
+        # print(f"attention_weights data: {attention_weights}")
 
 
         # 对 values 进行加权求和，得到最终的输出
@@ -141,8 +169,8 @@ class MultiHeadAttentionV2(nn.Module):
 # 对 MultiHeadAttention 进行测试
 if __name__ == "__main__":
     batch_size = 2
-    seq_length = 5
-    d_model = 8
+    seq_length = 3
+    d_model = 4
     num_heads = 2
 
     #在mps上运行
@@ -151,8 +179,10 @@ if __name__ == "__main__":
     mha = MultiHeadAttentionV2(d_model, num_heads).to(device)
 
     x = torch.randn(batch_size, seq_length, d_model).to(device)
+    print("Input data:", x)
 
     output = mha(x)
 
     print("Input shape:", x.shape)
     print("Output shape:", output.shape)  # 应该是 (batch_size, seq_length, num_heads * d_head) 即 (2, 4, 32)
+    print("Output data:", output)

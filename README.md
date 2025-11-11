@@ -5,3 +5,11 @@
 * tensor 的操作，包括transpose, permute, view, unsqueeze, mask_fill, tril
 * transformer的Attention 相关的计算过程，实际计算过程，一些有意思的问题，softmax 在行上进行还是列上进行的区别
 * 一些基础的算法，包括 softmax，normalization
+
+
+
+# transformer 基本组成部分
+## tokenizer & embedding
+## Causal Attention & MultiHeadAttention
+## Layer-Normalization
+## Transformer Block
